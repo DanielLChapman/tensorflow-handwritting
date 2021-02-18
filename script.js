@@ -31,7 +31,6 @@ async function showExamples(data) {
 
 async function run() {  
   const data = new MnistData();
-  console.log('here');
   await data.load();
   await showExamples(data); 
 
@@ -39,6 +38,10 @@ async function run() {
   tfvis.show.modelSummary({name: 'Model Architecture', tab: 'Model'}, model);
     
   await train(model, data);
+
+  await showAccuracy(model, data);
+  await showConfusion(model, data);
+
 
 }
 
@@ -62,6 +65,7 @@ function getModel() {
       activation: 'relu',
       kernelInitializer: 'varianceScaling'
     }));
+
   
     // The MaxPooling layer acts as a sort of downsampling using max values
     // in a region instead of averaging.  
@@ -96,11 +100,13 @@ function getModel() {
     // Choose an optimizer, loss function and accuracy metric,
     // then compile and return the model
     const optimizer = tf.train.adam();
+    
     model.compile({
       optimizer: optimizer,
       loss: 'categoricalCrossentropy',
       metrics: ['accuracy'],
     });
+
   
     return model;
   }
@@ -120,6 +126,7 @@ async function train(model, data) {
   
     const [trainXs, trainYs] = tf.tidy(() => {
       const d = data.nextTrainBatch(TRAIN_DATA_SIZE);
+
       return [
         d.xs.reshape([TRAIN_DATA_SIZE, 28, 28, 1]),
         d.labels
@@ -143,3 +150,36 @@ async function train(model, data) {
     });
   }
   
+
+  const classNames = ['Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
+
+function doPrediction(model, data, testDataSize = 500) {
+  const IMAGE_WIDTH = 28;
+  const IMAGE_HEIGHT = 28;
+  const testData = data.nextTestBatch(testDataSize);
+  const testxs = testData.xs.reshape([testDataSize, IMAGE_WIDTH, IMAGE_HEIGHT, 1]);
+  const labels = testData.labels.argMax(-1);
+  const preds = model.predict(testxs).argMax(-1);
+
+  testxs.dispose();
+  return [preds, labels];
+}
+
+
+async function showAccuracy(model, data) {
+  const [preds, labels] = doPrediction(model, data);
+  const classAccuracy = await tfvis.metrics.perClassAccuracy(labels, preds);
+  const container = {name: 'Accuracy', tab: 'Evaluation'};
+  tfvis.show.perClassAccuracy(container, classAccuracy, classNames);
+
+  labels.dispose();
+}
+
+async function showConfusion(model, data) {
+  const [preds, labels] = doPrediction(model, data);
+  const confusionMatrix = await tfvis.metrics.confusionMatrix(labels, preds);
+  const container = {name: 'Confusion Matrix', tab: 'Evaluation'};
+  tfvis.render.confusionMatrix(container, {values: confusionMatrix, tickLabels: classNames});
+
+  labels.dispose();
+}
